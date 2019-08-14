@@ -8,6 +8,8 @@
 :mtime: 2018.07.10 17:44
 """
 
+import pickle as pkl
+
 import numpy as np
 
 
@@ -17,13 +19,13 @@ class Vocab(object):
         self.id2word = {}
         self.word2id = {}
         self.word_cnt = {}
-        
+
         # char
         self.id2char = {}
         self.char2id = {}
         self.char_cnt = {}
 
-        self.lower = lower   # lower fn
+        self.lower = lower  # lower fn
 
         self.word_embed_dim = None
         self.word_embeddings = None
@@ -43,10 +45,10 @@ class Vocab(object):
             self.load_from_file(filename)
 
     def load_from_file(self, file_path):
-        for line in open(file_path, 'r'):
+        for line in open(file_path, 'r', encoding='utf-8'):
             token = line.rstrip('\n')
             self.add_word(token)
-            [self.add_char(ctoken) for ctoken in token]
+            [self.add_char(t) for t in token]
 
     def word_size(self):
         return len(self.id2word)
@@ -121,22 +123,23 @@ class Vocab(object):
         self.word_embeddings = np.random.rand(self.word_size(), embed_dim)
         for token in [self.pad_token, self.unk_token]:
             self.word_embeddings[self.get_word_id(token)] = np.zeros([self.word_embed_dim])
-    
+
     def randomly_init_char_embeddings(self, embed_dim):
         self.char_embed_dim = embed_dim
         self.char_embeddings = np.random.rand(self.char_size(), embed_dim)
         for token in [self.pad_token, self.unk_token]:
             self.char_embeddings[self.get_char_id(token)] = np.zeros([self.char_embed_dim])
-    
+
     """
     :description: for word
     """
+
     def load_pretrained_word_embeddings(self, embedding_path):
         trained_embeddings = {}
-        with open(embedding_path, 'r') as fin:
+        with open(embedding_path, 'r', encoding='utf-8') as fin:
             for line in fin:
                 contents = line.strip().split()
-                token = contents[0].decode('utf8')
+                token = contents[0]
                 if token not in self.word2id:
                     continue
                 trained_embeddings[token] = list(map(float, contents[1:]))
@@ -170,12 +173,12 @@ class Vocab(object):
         # rebuild the token x id map
         self.char2id = {}
         self.id2char = {}
-        for char in self.initial_chars:
+        for char in self.initial_tokens:
             self.add_char(char, cnt=0)
         for char in filtered_chars:
             self.add_char(char, cnt=0)
 
-        print("=====unk char id {} , pad char id {}".format(self.char2id[self.unk_char], self.char2id[self.pad_char]))
+        print("=====unk char id {} , pad char id {}".format(self.char2id[self.unk_token], self.char2id[self.pad_token]))
 
         if self.unk_token not in self.char2id:
             print("====unknown char is not in char2id=====", self.char_size())
@@ -188,7 +191,7 @@ class Vocab(object):
     def convert_word_to_ids(self, tokens):
         vec = [self.get_word_id(label) for label in tokens]
         return vec
-    
+
     def convert_char_to_ids(self, tokens):
         vec = []
         for token in tokens:

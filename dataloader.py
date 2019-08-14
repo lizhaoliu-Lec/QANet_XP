@@ -1,28 +1,26 @@
 # -*- coding:utf8 -*-
 
-import os
 import json
 import logging
 import numpy as np
 from collections import Counter
 import jieba
 
+
 def word_tokenize(sent):
     if isinstance(sent, list):
-        # tokens = "".join(sent)
-        # tokens = list(cut_api.cut(sent))
         tokens = sent
-        return [token for token in tokens if len(token) >= 1]
     else:
-        tokens = jieba.lcut(sent))
-        return [token for token in tokens if len(token) >= 1]
+        tokens = jieba.lcut(sent)
+    return [token for token in tokens if len(token) >= 1]
 
 
 class DataLoader(object):
     """
     This module implements the APIs for loading and using baidu reading comprehension dataset
     """
-    def __init__(self, max_p_num, max_p_len, max_q_len, max_char_len, 
+
+    def __init__(self, max_p_num, max_p_len, max_q_len, max_char_len,
                  train_files=[], dev_files=[], test_files=[]):
         self.logger = logging.getLogger("brc")
         self.max_p_num = max_p_num
@@ -55,12 +53,15 @@ class DataLoader(object):
             data_path: the data file to load
         """
         max_char_num = 0
-        max_char_list = []
-        with open(data_path) as fin:
+        with open(data_path, encoding='UTF-8') as fin:
             data_set = []
             for lidx, line in enumerate(fin):
+
                 sample = json.loads(line.strip())
-                #print(sample)
+                # print(sample)
+
+                # if have no answer and answer to long
+                # we ignore it.
                 if train:
                     if len(sample['answer_spans']) == 0:
                         continue
@@ -78,7 +79,6 @@ class DataLoader(object):
                 for char in question_chars:
                     if len(char) > max_char_num:
                         max_char_num = len(char)
-                        max_char_list = char
 
                 sample['passages'] = []
                 for d_idx, doc in enumerate(sample['documents']):
@@ -96,7 +96,7 @@ class DataLoader(object):
                         sample['passages'].append(
                             {'passage_tokens': passage_tokens,
                              'is_selected': doc['is_selected'],
-                             'passage_chars':passage_chars}
+                             'passage_chars': passage_chars}
                         )
                     else:
                         para_infos = []
@@ -116,8 +116,9 @@ class DataLoader(object):
                         for para_info in para_infos[:1]:
                             fake_passage_tokens += para_info[0]
 
-                        sample['passages'].append({'passage_tokens': fake_passage_tokens,
-                                                    'passage_chars':[list(token) for token in fake_passage_tokens]})
+                        sample['passages'].append(
+                            {'passage_tokens': fake_passage_tokens,
+                             'passage_chars': [list(token) for token in fake_passage_tokens]})
                 data_set.append(sample)
         return data_set
 
@@ -133,7 +134,7 @@ class DataLoader(object):
         """
         batch_data = {'raw_data': [data[i] for i in indices],
                       'question_token_ids': [],
-                      'question_char_ids' : [],
+                      'question_char_ids': [],
                       'question_length': [],
                       'passage_token_ids': [],
                       'passage_length': [],
@@ -178,20 +179,20 @@ class DataLoader(object):
         Dynamically pads the batch_data with pad_id
         """
         pad_char_len = self.max_char_len
-        pad_p_len = self.max_p_len #min(self.max_p_len, max(batch_data['passage_length']))
-        pad_q_len = self.max_q_len #min(self.max_q_len, max(batch_data['question_length']))
+        pad_p_len = self.max_p_len  # min(self.max_p_len, max(batch_data['passage_length']))
+        pad_q_len = self.max_q_len  # min(self.max_q_len, max(batch_data['question_length']))
         batch_data['passage_token_ids'] = [(ids + [pad_id] * (pad_p_len - len(ids)))[: pad_p_len]
                                            for ids in batch_data['passage_token_ids']]
         for index, char_list in enumerate(batch_data['passage_char_ids']):
-            #print(batch_data['passage_char_ids'])
+            # print(batch_data['passage_char_ids'])
             for char_index in range(len(char_list)):
                 if len(char_list[char_index]) >= pad_char_len:
                     char_list[char_index] = char_list[char_index][:self.max_char_len]
                 else:
-                    char_list[char_index] += [pad_char_id]*(pad_char_len - len(char_list[char_index]))
+                    char_list[char_index] += [pad_char_id] * (pad_char_len - len(char_list[char_index]))
             batch_data['passage_char_ids'][index] = char_list
-        batch_data['passage_char_ids'] = [(ids + [[pad_char_id]*pad_char_len]*(pad_p_len-len(ids)))[:pad_p_len]
-                                        for ids in batch_data['passage_char_ids']]
+        batch_data['passage_char_ids'] = [(ids + [[pad_char_id] * pad_char_len] * (pad_p_len - len(ids)))[:pad_p_len]
+                                          for ids in batch_data['passage_char_ids']]
 
         # print(np.array(batch_data['passage_char_ids']).shape, "==========")
 
@@ -201,11 +202,11 @@ class DataLoader(object):
             for char_index in range(len(char_list)):
                 if len(char_list[char_index]) >= pad_char_len:
                     char_list[char_index] = char_list[char_index][:self.max_char_len]
-                else:    
-                    char_list[char_index] += [pad_char_id]*(pad_char_len - len(char_list[char_index]))
+                else:
+                    char_list[char_index] += [pad_char_id] * (pad_char_len - len(char_list[char_index]))
             batch_data['question_char_ids'][index] = char_list
-        batch_data['question_char_ids'] = [(ids + [[pad_char_id]*pad_char_len]*(pad_q_len-len(ids)))[:pad_q_len]
-                                        for ids in batch_data['question_char_ids']]
+        batch_data['question_char_ids'] = [(ids + [[pad_char_id] * pad_char_len] * (pad_q_len - len(ids)))[:pad_q_len]
+                                           for ids in batch_data['question_char_ids']]
 
         return batch_data, pad_p_len, pad_q_len
 
@@ -235,7 +236,6 @@ class DataLoader(object):
                     for token in passage['passage_tokens']:
                         yield token
 
-
     def convert_to_ids(self, vocab):
         """
         Convert the question and passage in the original dataset to ids
@@ -259,6 +259,7 @@ class DataLoader(object):
             set_name: train/dev/test to indicate the set
             batch_size: number of samples in one batch
             pad_id: pad id
+            pad_char_id: pad char id
             shuffle: if set to be true, the data is shuffled.
         Returns:
             a generator for all batches
@@ -278,4 +279,3 @@ class DataLoader(object):
         for batch_start in np.arange(0, data_size, batch_size):
             batch_indices = indices[batch_start: batch_start + batch_size]
             yield self._one_mini_batch(data, batch_indices, pad_id, pad_char_id)
-

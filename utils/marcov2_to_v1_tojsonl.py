@@ -1,6 +1,6 @@
 import sys
 import json
-import pandas as pd 
+import pandas as pd
 
 if __name__ == '__main__':
     if len(sys.argv) != 3:

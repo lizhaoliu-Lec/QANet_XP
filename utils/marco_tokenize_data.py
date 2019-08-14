@@ -1,7 +1,8 @@
-#coding=utf8
+# coding=utf8
 
 import os, sys, json
 import nltk
+
 
 def _nltk_tokenize(sequence):
     tokens = nltk.word_tokenize(sequence)
@@ -14,6 +15,7 @@ def _nltk_tokenize(sequence):
         token_offsets.append([cur_char_offset, cur_char_offset + len(token) - 1])
         token_words.append(token)
     return token_offsets, token_words
+
 
 def segment(input_js):
     _, input_js['segmented_question'] = _nltk_tokenize(input_js['question'])
@@ -36,7 +38,7 @@ if __name__ == '__main__':
         exit()
 
     nltk.download('punkt')
-    
+
     for line in open(sys.argv[1]):
         dureader_js = json.loads(line.strip())
         segment(dureader_js)

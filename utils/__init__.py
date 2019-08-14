@@ -22,7 +22,6 @@ Authors: liuyuan(liuyuan04@baidu.com)
 Date:    2017/10/06 18:23:06
 """
 
-
 from .dureader_eval import compute_bleu_rouge
 from .dureader_eval import normalize
 from .preprocess import find_fake_answer
@@ -33,4 +32,4 @@ __all__ = [
     'normalize',
     'find_fake_answer',
     'find_best_question_match',
-    ]
+]

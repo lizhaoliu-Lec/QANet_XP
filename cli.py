@@ -8,8 +8,9 @@
 :mtime: 2018.07.10 15:32
 """
 
-import tensorflow as tf 
+import tensorflow as tf
 import os
+
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
@@ -19,6 +20,7 @@ import argparse
 from dataloader import DataLoader
 from vocab import Vocab
 from model import Model
+
 
 def parse_args():
     parser = argparse.ArgumentParser('Reading Comprehension on BaiduRC dataset')
@@ -39,7 +41,7 @@ def parse_args():
     train_settings.add_argument('--loss_type', type=str, default='cross_entropy',
                                 help='loss fn')
     train_settings.add_argument('--fix_pretrained_vector', type=bool, default=True,
-                        help='fixed pretrained vector')
+                                help='fixed pretrained vector')
     train_settings.add_argument('--optim', default='adam',
                                 help='optimizer type')
     train_settings.add_argument('--learning_rate', type=float, default=0.0001,
@@ -68,7 +70,7 @@ def parse_args():
                                 help='size of the char embeddings')
     model_settings.add_argument('--hidden_size', type=int, default=64,
                                 help='size of hidden units')
-    model_settings.add_argument('--head_size', type=int, default=1, 
+    model_settings.add_argument('--head_size', type=int, default=1,
                                 help='size of head in multihead-attention')
     model_settings.add_argument('--max_p_num', type=int, default=5,
                                 help='max passage num in one sample')
@@ -105,21 +107,24 @@ def parse_args():
                                help='the dir to write tensorboard summary')
     path_settings.add_argument('--log_path',
                                help='path of the log file. If not set, logs are printed to console')
-    path_settings.add_argument('--pretrained_word_path',default=None,
+    path_settings.add_argument('--pretrained_word_path', default=None,
                                help='path of the log file. If not set, logs are printed to console')
-    path_settings.add_argument('--pretrained_char_path',default=None,
+    path_settings.add_argument('--pretrained_char_path', default=None,
                                help='path of the log file. If not set, logs are printed to console')
- 
-    #path_settings.add_argument('--pretrained_word_path',default="/path/to/Chinese_Word_Vector",
+
+    # path_settings.add_argument('--pretrained_word_path',default="/path/to/Chinese_Word_Vector",
     #                           help='path of the log file. If not set, logs are printed to console')
-    #path_settings.add_argument('--pretrained_char_path',default="/path/to/Chinese_Word_Vector",
+    # path_settings.add_argument('--pretrained_char_path',default="/path/to/Chinese_Word_Vector",
     #                           help='path of the log file. If not set, logs are printed to console')
 
     return parser.parse_args()
 
+
 """
 :description: prepare to process data including building vocab
 """
+
+
 def prepro(args):
     logger = logging.getLogger("QANet")
     logger.info("====== preprocessing ======")
@@ -133,8 +138,8 @@ def prepro(args):
             os.makedirs(dir_path)
 
     logger.info('Building vocabulary...')
-    dataloader = DataLoader(args.max_p_num, args.max_p_len, args.max_q_len, args.max_ch_len, 
-                          args.train_files, args.dev_files, args.test_files)
+    dataloader = DataLoader(args.max_p_num, args.max_p_len, args.max_q_len, args.max_ch_len,
+                            args.train_files, args.dev_files, args.test_files)
 
     vocab = Vocab(lower=True)
     for word in dataloader.word_iter('train'):
@@ -144,21 +149,22 @@ def prepro(args):
     unfiltered_vocab_size = vocab.word_size()
     vocab.filter_words_by_cnt(min_cnt=2)
     filtered_num = unfiltered_vocab_size - vocab.word_size()
-    logger.info('After filter {} tokens, the final vocab size is {}, char size is{}'.format(filtered_num,
-                                                                            vocab.word_size(), vocab.char_size()))
+    logger.info('After filter {} tokens, the final vocab size is {}, char size is {}'.format(filtered_num,
+                                                                                             vocab.word_size(),
+                                                                                             vocab.char_size()))
 
     unfiltered_vocab_char_size = vocab.char_size()
     vocab.filter_chars_by_cnt(min_cnt=2)
     filtered_char_num = unfiltered_vocab_char_size - vocab.char_size()
     logger.info('After filter {} chars, the final char vocab size is {}'.format(filtered_char_num,
-                                                                            vocab.char_size()))
+                                                                                vocab.char_size()))
 
     logger.info('Assigning embeddings...')
     if args.pretrained_word_path is not None:
         vocab.load_pretrained_word_embeddings(args.pretrained_word_path)
     else:
         vocab.randomly_init_word_embeddings(args.word_embed_size)
-    
+
     if args.pretrained_char_path is not None:
         vocab.load_pretrained_char_embeddings(args.pretrained_char_path)
     else:
@@ -170,9 +176,12 @@ def prepro(args):
 
     logger.info('====== Done with preparing! ======')
 
+
 """
 :description: train
 """
+
+
 def train(args):
     logger = logging.getLogger("QANet")
     logger.info("====== training ======")
@@ -182,7 +191,7 @@ def train(args):
         vocab = pickle.load(fin)
 
     dataloader = DataLoader(args.max_p_num, args.max_p_len, args.max_q_len, args.max_ch_len,
-                          args.train_files, args.dev_files)
+                            args.train_files, args.dev_files)
 
     logger.info('Converting text into ids...')
     dataloader.convert_to_ids(vocab)
@@ -191,14 +200,17 @@ def train(args):
     model = Model(vocab, args)
 
     logger.info('Training the model...')
-    model.train(dataloader, args.epochs, args.batch_size, save_dir=args.model_dir, save_prefix=args.algo, dropout=args.dropout)
+    model.train(dataloader, args.epochs, args.batch_size, save_dir=args.model_dir, save_prefix=args.algo,
+                dropout=args.dropout)
 
     logger.info('====== Done with model training! ======')
 
 
 """
-:descriptoin: evaluate test data
+:descriptoin: evaluate test data--prepro
 """
+
+
 def evaluate(args):
     logger = logging.getLogger("QANet")
     logger.info("====== evaluating ======")
@@ -216,7 +228,8 @@ def evaluate(args):
     model = Model(vocab, args)
     model.restore(args.model_dir, args.algo)
     logger.info('Evaluating the model on dev set...')
-    dev_batches = dataloader.next_batch('dev', args.batch_size, vocab.get_word_id(vocab.pad_token), vocab.get_char_id(vocab.pad_token), shuffle=False)
+    dev_batches = dataloader.next_batch('dev', args.batch_size, vocab.get_word_id(vocab.pad_token),
+                                        vocab.get_char_id(vocab.pad_token), shuffle=False)
 
     dev_loss, dev_bleu_rouge = model.evaluate(
         dev_batches, result_dir=args.result_dir, result_prefix='dev.predicted')
@@ -229,6 +242,8 @@ def evaluate(args):
 """
 :descriptoin: predict answers
 """
+
+
 def predict(args):
     logger = logging.getLogger("QANet")
 
@@ -237,8 +252,8 @@ def predict(args):
         vocab = pickle.load(fin)
 
     assert len(args.test_files) > 0, 'No test files are provided.'
-    dataloader = DataLoader(args.max_p_num, args.max_p_len, args.max_q_len, args.max_ch_len, 
-                          test_files=args.test_files)
+    dataloader = DataLoader(args.max_p_num, args.max_p_len, args.max_q_len, args.max_ch_len,
+                            test_files=args.test_files)
 
     logger.info('Converting text into ids...')
     dataloader.convert_to_ids(vocab)
@@ -247,10 +262,11 @@ def predict(args):
     model = Model(vocab, args)
     model.restore(args.model_dir, args.algo)
     logger.info('Predicting answers for test set...')
-    test_batches = dataloader.next_batch('test', args.batch_size, vocab.get_word_id(vocab.pad_token), vocab.get_char_id(vocab.pad_token), shuffle=False)
+    test_batches = dataloader.next_batch('test', args.batch_size, vocab.get_word_id(vocab.pad_token),
+                                         vocab.get_char_id(vocab.pad_token), shuffle=False)
 
     model.evaluate(test_batches,
-                      result_dir=args.result_dir, result_prefix='test.predicted')
+                   result_dir=args.result_dir, result_prefix='test.predicted')
 
 
 def run():
@@ -284,6 +300,7 @@ def run():
         evaluate(args)
     if args.predict:
         predict(args)
+
 
 if __name__ == '__main__':
     run()

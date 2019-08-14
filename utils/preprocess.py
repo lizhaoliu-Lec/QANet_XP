@@ -19,6 +19,7 @@ This module finds the most related paragraph of each document according to recal
 """
 
 import sys
+
 if sys.version[0] == '2':
     reload(sys)
     sys.setdefaultencoding("utf-8")
@@ -121,14 +122,14 @@ def find_best_question_match(doc, question, with_score=False):
     for p_idx, para_tokens in enumerate(doc['segmented_paragraphs']):
         if len(question) > 0:
             related_score = metric_max_over_ground_truths(recall,
-                    para_tokens,
-                    question)
+                                                          para_tokens,
+                                                          question)
         else:
             related_score = 0
 
         if related_score > max_related_score \
                 or (related_score == max_related_score \
-                and len(para_tokens) < most_related_para_len):
+                    and len(para_tokens) < most_related_para_len):
             most_related_para = p_idx
             max_related_score = related_score
             most_related_para_len = len(para_tokens)
