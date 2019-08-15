@@ -58,9 +58,8 @@ class DataLoader(object):
             for lidx, line in enumerate(fin):
 
                 sample = json.loads(line.strip())
-                # print(sample)
 
-                # if have no answer and answer to long
+                # if have no answer or answer to long
                 # we ignore it.
                 if train:
                     if len(sample['answer_spans']) == 0:
@@ -91,13 +90,13 @@ class DataLoader(object):
                         for char in passage_chars:
                             if len(char) > max_char_num:
                                 max_char_num = len(char)
-                                max_char_list = char
 
-                        sample['passages'].append(
-                            {'passage_tokens': passage_tokens,
-                             'is_selected': doc['is_selected'],
-                             'passage_chars': passage_chars}
-                        )
+                        sample['passages'].append({
+                            'passage_tokens': passage_tokens,
+                            'is_selected': doc['is_selected'],
+                            'passage_chars': passage_chars,
+                        })
+
                     else:
                         para_infos = []
                         for para_tokens in doc['segmented_paragraphs']:
@@ -116,9 +115,10 @@ class DataLoader(object):
                         for para_info in para_infos[:1]:
                             fake_passage_tokens += para_info[0]
 
-                        sample['passages'].append(
-                            {'passage_tokens': fake_passage_tokens,
-                             'passage_chars': [list(token) for token in fake_passage_tokens]})
+                        sample['passages'].append({
+                            'passage_tokens': fake_passage_tokens,
+                            'passage_chars': [list(token) for token in fake_passage_tokens],
+                        })
                 data_set.append(sample)
         return data_set
 

@@ -73,11 +73,9 @@ class Model(object):
         param_num = total_params(tf.trainable_variables())
         self.logger.info('There are {} parameters in the model'.format(param_num))
 
-    """
-    :description: Placeholders
-    """
-
     def _setup_placeholders(self):
+        """  Placeholders
+        """
 
         if self.demo:
             self.c = tf.placeholder(tf.int32, [None, self.config.max_p_len], "context")
@@ -87,14 +85,20 @@ class Model(object):
             self.start_label = tf.placeholder(tf.int32, [None], "answer_label1")
             self.end_label = tf.placeholder(tf.int32, [None], "answer_label2")
         else:
-            self.c = tf.placeholder(tf.int32, [self.config.batch_size * self.max_p_num, self.config.max_p_len],
+            self.c = tf.placeholder(tf.int32,
+                                    [self.config.batch_size * self.max_p_num, self.config.max_p_len],
                                     "context")
-            self.q = tf.placeholder(tf.int32, [self.config.batch_size * self.max_p_num, self.config.max_q_len],
+            self.q = tf.placeholder(tf.int32,
+                                    [self.config.batch_size * self.max_p_num, self.config.max_q_len],
                                     "question")
-            self.ch = tf.placeholder(tf.int32, [self.config.batch_size * self.max_p_num, self.config.max_p_len,
-                                                self.config.max_ch_len], "context_char")
-            self.qh = tf.placeholder(tf.int32, [self.config.batch_size * self.max_p_num, self.config.max_q_len,
-                                                self.config.max_ch_len], "question_char")
+            self.ch = tf.placeholder(tf.int32,
+                                     [self.config.batch_size * self.max_p_num,
+                                      self.config.max_p_len, self.config.max_ch_len],
+                                     "context_char")
+            self.qh = tf.placeholder(tf.int32,
+                                     [self.config.batch_size * self.max_p_num,
+                                      self.config.max_q_len, self.config.max_ch_len],
+                                     "question_char")
             self.start_label = tf.placeholder(tf.int32, [self.config.batch_size], "answer_label1")
             self.end_label = tf.placeholder(tf.int32, [self.config.batch_size], "answer_label2")
 
@@ -107,11 +111,9 @@ class Model(object):
 
         self.global_step = tf.Variable(0, name="global_step", trainable=False)
 
-    """
-    :descrition: The embedding layer, question and passage share embeddings
-    """
-
     def _embed(self):
+        """The embedding layer, question and passage share embeddings
+        """
         with tf.variable_scope('word_char_embedding'):
 
             if self.config.fix_pretrained_vector:
@@ -169,6 +171,13 @@ class Model(object):
             self.qh_len = tf.reshape(tf.reduce_sum(
                 tf.cast(tf.cast(self.qh, tf.bool), tf.int32), axis=2), [-1])
 
+        #  self.config.batch_size if not self.demo else 1,
+        #  self.max_p_len,
+        #  self.max_q_len,
+        #  self.config.max_ch_len,
+        #  self.config.hidden_size,
+        #  self.config.char_embed_size,
+        #  self.config.head_size
         N, PL, QL, CL, d, dc, nh = self._params()
 
         if self.config.fix_pretrained_vector:
@@ -181,10 +190,16 @@ class Model(object):
             ch_emb = tf.nn.dropout(ch_emb, 1.0 - 0.5 * self.dropout)
             qh_emb = tf.nn.dropout(qh_emb, 1.0 - 0.5 * self.dropout)
 
-            ch_emb = conv(ch_emb, d,
-                          bias=True, activation=tf.nn.relu, kernel_size=5, name="char_conv", reuse=None)
-            qh_emb = conv(qh_emb, d,
-                          bias=True, activation=tf.nn.relu, kernel_size=5, name="char_conv", reuse=True)
+            ch_emb = conv(ch_emb, d, bias=True,
+                          activation=tf.nn.relu,
+                          kernel_size=5,
+                          name="char_conv",
+                          reuse=None)
+            qh_emb = conv(qh_emb, d, bias=True,
+                          activation=tf.nn.relu,
+                          kernel_size=5,
+                          name="char_conv",
+                          reuse=True)
 
             ch_emb = tf.reduce_max(ch_emb, axis=1)
             qh_emb = tf.reduce_max(qh_emb, axis=1)
@@ -202,6 +217,13 @@ class Model(object):
             self.q_emb = highway(q_emb, size=d, scope="highway", dropout=self.dropout, reuse=True)
 
     def _encode(self):
+        #  self.config.batch_size if not self.demo else 1,
+        #  self.max_p_len,
+        #  self.max_q_len,
+        #  self.config.max_ch_len,
+        #  self.config.hidden_size,
+        #  self.config.char_embed_size,
+        #  self.config.head_size
         N, PL, QL, CL, d, dc, nh = self._params()
         if self.config.fix_pretrained_vector:
             dc = self.char_mat.get_shape()[-1]
@@ -242,9 +264,17 @@ class Model(object):
             S_T = tf.transpose(tf.nn.softmax(mask_logits(S, mask=mask_c), dim=1), (0, 2, 1))
             self.c2q = tf.matmul(S_, self.q_embed_encoding)
             self.q2c = tf.matmul(tf.matmul(S_, S_T), self.c_embed_encoding)
-            self.attention_outputs = [self.c_embed_encoding, self.c2q, self.c_embed_encoding * self.c2q,
+            self.attention_outputs = [self.c_embed_encoding, self.c2q,
+                                      self.c_embed_encoding * self.c2q,
                                       self.c_embed_encoding * self.q2c]
 
+        #  self.config.batch_size if not self.demo else 1,
+        #  self.max_p_len,
+        #  self.max_q_len,
+        #  self.config.max_ch_len,
+        #  self.config.hidden_size,
+        #  self.config.char_embed_size,
+        #  self.config.head_size
         N, PL, QL, CL, d, dc, nh = self._params()
         if self.config.fix_pretrained_vector:
             dc = self.char_mat.get_shape()[-1]
@@ -254,20 +284,18 @@ class Model(object):
             for i in range(3):
                 if i % 2 == 0:
                     self.enc[i] = tf.nn.dropout(self.enc[i], 1.0 - self.dropout)
-                self.enc.append(
-                    residual_block(self.enc[i],
-                                   num_blocks=1,
-                                   num_conv_layers=2,
-                                   kernel_size=5,
-                                   mask=self.c_mask,
-                                   num_filters=d,
-                                   num_heads=nh,
-                                   seq_len=self.c_len,
-                                   scope="Model_Encoder",
-                                   bias=False,
-                                   reuse=True if i > 0 else None,
-                                   dropout=self.dropout)
-                )
+                self.enc.append(residual_block(self.enc[i],
+                                               num_blocks=1,
+                                               num_conv_layers=2,
+                                               kernel_size=5,
+                                               mask=self.c_mask,
+                                               num_filters=d,
+                                               num_heads=nh,
+                                               seq_len=self.c_len,
+                                               scope="Model_Encoder",
+                                               bias=False,
+                                               reuse=True if i > 0 else None,
+                                               dropout=self.dropout))
 
             for i, item in enumerate(self.enc):
                 self.enc[i] = tf.reshape(self.enc[i],
@@ -275,20 +303,31 @@ class Model(object):
 
     def _decode(self):
 
+        #  self.config.batch_size if not self.demo else 1,
+        #  self.max_p_len,
+        #  self.max_q_len,
+        #  self.config.max_ch_len,
+        #  self.config.hidden_size,
+        #  self.config.char_embed_size,
+        #  self.config.head_size
         N, PL, QL, CL, d, dc, nh = self._params()
 
         if self.config.use_position_attn:
             start_logits = tf.squeeze(
-                conv(self._attention(tf.concat([self.enc[1], self.enc[2]], axis=-1), name="attn1"), 1, bias=False,
+                conv(self._attention(tf.concat([self.enc[1], self.enc[2]], axis=-1), name="attn1"),
+                     1, bias=False,
                      name="start_pointer"), -1)
             end_logits = tf.squeeze(
-                conv(self._attention(tf.concat([self.enc[1], self.enc[3]], axis=-1), name="attn2"), 1, bias=False,
+                conv(self._attention(tf.concat([self.enc[1], self.enc[3]], axis=-1), name="attn2"),
+                     1, bias=False,
                      name="end_pointer"), -1)
         else:
             start_logits = tf.squeeze(
-                conv(tf.concat([self.enc[1], self.enc[2]], axis=-1), 1, bias=False, name="start_pointer"), -1)
+                conv(tf.concat([self.enc[1], self.enc[2]], axis=-1), 1, bias=False, name="start_pointer"),
+                -1)
             end_logits = tf.squeeze(
-                conv(tf.concat([self.enc[1], self.enc[3]], axis=-1), 1, bias=False, name="end_pointer"), -1)
+                conv(tf.concat([self.enc[1], self.enc[3]], axis=-1), 1, bias=False, name="end_pointer"),
+                -1)
 
         self.logits = [mask_logits(start_logits, mask=tf.reshape(self.c_mask, [N, -1])),
                        mask_logits(end_logits, mask=tf.reshape(self.c_mask, [N, -1]))]
@@ -353,14 +392,13 @@ class Model(object):
                     self.assign_vars.append(tf.assign(g, v))
 
     def _create_train_op(self):
-        # self.lr = tf.minimum(self.learning_rate, self.learning_rate / tf.log(999.) * tf.log(tf.cast(self.global_step, tf.float32) + 1))
         self.lr = self.learning_rate
 
         if self.optim_type == 'adagrad':
             self.optimizer = tf.train.AdagradOptimizer(self.lr)
         elif self.optim_type == 'adam':
             self.optimizer = tf.train.AdamOptimizer(learning_rate=self.lr)
-        elif self.optim_type == 'rprop':
+        elif self.optim_type == 'rmsprop':
             self.optimizer = tf.train.RMSPropOptimizer(self.lr)
         elif self.optim_type == 'sgd':
             self.optimizer = tf.train.GradientDescentOptimizer(self.lr)
@@ -371,7 +409,6 @@ class Model(object):
             raise NotImplementedError('Unsupported optimizer: {}'.format(self.optim_type))
 
         self.logger.info("applying optimize %s" % self.optim_type)
-        trainable_vars = tf.trainable_variables()
         if self.config.clip_weight:
             # clip_weight
             tvars = tf.trainable_variables()
@@ -387,31 +424,24 @@ class Model(object):
             W = tf.get_variable(name="attn_W",
                                 shape=[2 * self.config.hidden_size, 2 * self.config.hidden_size],
                                 initializer=tf.contrib.layers.xavier_initializer(),
-                                # initializer=tf.truncated_normal_initializer(),
-                                # initializer=tf.keras.initializers.lecun_normal(),
                                 dtype=tf.float32)
             V = tf.get_variable(name="attn_V", shape=[2 * self.config.hidden_size, 1],
                                 initializer=tf.contrib.layers.xavier_initializer(),
-                                # initializer=tf.truncated_normal_initializer(),
-                                # initializer=tf.keras.initializers.lecun_normal(),
                                 dtype=tf.float32)
             U = tf.get_variable(name="attn_U",
                                 shape=[2 * self.config.hidden_size, 2 * self.config.hidden_size],
                                 initializer=tf.contrib.layers.xavier_initializer(),
-                                # initializer=tf.truncated_normal_initializer(),
-                                # initializer=tf.keras.initializers.lecun_normal(),
                                 dtype=tf.float32)
 
             self.position_emb = tf.reshape(self.position_emb, [-1, 2 * self.config.hidden_size])
             shape = tf.shape(output)
             output = tf.reshape(output, [-1, 2 * self.config.hidden_size])
 
-            atten_hidden = tf.tanh(
-                tf.add(
-                    tf.matmul(self.position_emb, W),
-                    tf.matmul(output, U)))
+            att_hidden = tf.tanh(tf.add(
+                tf.matmul(self.position_emb, W),
+                tf.matmul(output, U)))
             alpha = tf.nn.softmax(
-                tf.reshape(tf.matmul(atten_hidden, V), [-1, shape[1], 1]), axis=1)
+                tf.reshape(tf.matmul(att_hidden, V), [-1, shape[1], 1]), axis=1)
             output = tf.reshape(output, [-1, shape[1], 2 * self.config.hidden_size])
             C = tf.multiply(alpha, output)
             return tf.concat([output, C], axis=-1)
@@ -445,12 +475,22 @@ class Model(object):
         return 1.0 * total_loss / total_num
 
     def _params(self):
-        return (self.config.batch_size if not self.demo else 1, self.max_p_len,
-                self.max_q_len, self.config.max_ch_len, self.config.hidden_size,
-                self.config.char_embed_size, self.config.head_size)
+        return (self.config.batch_size if not self.demo else 1,
+                self.max_p_len,
+                self.max_q_len,
+                self.config.max_ch_len,
+                self.config.hidden_size,
+                self.config.char_embed_size,
+                self.config.head_size)
 
-    def train(self, data, epochs, batch_size, save_dir, save_prefix,
-              dropout=0.0, evaluate=True):
+    def train(self,
+              data,
+              epochs,
+              batch_size,
+              save_dir,
+              save_prefix,
+              dropout=0.0,
+              evaluate=True):
         pad_id = self.vocab.get_word_id(self.vocab.pad_token)
         pad_char_id = self.vocab.get_char_id(self.vocab.pad_token)
         max_rouge_l = 0
@@ -481,17 +521,19 @@ class Model(object):
         total_loss, total_num = 0, 0
         for b_itx, batch in enumerate(eval_batches):
 
-            feed_dict = {self.c: batch['passage_token_ids'],
-                         self.q: batch['question_token_ids'],
-                         self.qh: batch['question_char_ids'],
-                         self.ch: batch["passage_char_ids"],
-                         self.start_label: batch['start_id'],
-                         self.end_label: batch['end_id'],
-                         self.dropout: 0.0}
+            feed_dict = {
+                self.c: batch['passage_token_ids'],
+                self.q: batch['question_token_ids'],
+                self.qh: batch['question_char_ids'],
+                self.ch: batch["passage_char_ids"],
+                self.start_label: batch['start_id'],
+                self.end_label: batch['end_id'],
+                self.dropout: 0.0
+            }
 
             try:
-                start_probs, end_probs, loss = self.sess.run([self.logits1,
-                                                              self.logits2, self.loss], feed_dict)
+                start_probs, end_probs, loss = self.sess.run(
+                    [self.logits1, self.logits2, self.loss], feed_dict)
                 total_loss += loss * len(batch['raw_data'])
                 total_num += len(batch['raw_data'])
 
@@ -503,17 +545,21 @@ class Model(object):
                         sample['pred_answers'] = [best_answer]
                         pred_answers.append(sample)
                     else:
-                        pred_answers.append({'question_id': sample['question_id'],
-                                             'question_type': sample['question_type'],
-                                             'answers': [best_answer],
-                                             'entity_answers': [[]],
-                                             'yesno_answers': []})
+                        pred_answers.append({
+                            'question_id': sample['question_id'],
+                            'question_type': sample['question_type'],
+                            'answers': [best_answer],
+                            'entity_answers': [[]],
+                            'yesno_answers': []
+                        })
                     if 'answers' in sample:
-                        ref_answers.append({'question_id': sample['question_id'],
-                                            'question_type': sample['question_type'],
-                                            'answers': sample['answers'],
-                                            'entity_answers': [[]],
-                                            'yesno_answers': []})
+                        ref_answers.append({
+                            'question_id': sample['question_id'],
+                            'question_type': sample['question_type'],
+                            'answers': sample['answers'],
+                            'entity_answers': [[]],
+                            'yesno_answers': []
+                        })
 
             except:
                 continue

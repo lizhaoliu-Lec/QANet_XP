@@ -138,8 +138,13 @@ def prepro(args):
             os.makedirs(dir_path)
 
     logger.info('Building vocabulary...')
-    dataloader = DataLoader(args.max_p_num, args.max_p_len, args.max_q_len, args.max_ch_len,
-                            args.train_files, args.dev_files, args.test_files)
+    dataloader = DataLoader(args.max_p_num,
+                            args.max_p_len,
+                            args.max_q_len,
+                            args.max_ch_len,
+                            args.train_files,
+                            args.dev_files,
+                            args.test_files)
 
     vocab = Vocab(lower=True)
     for word in dataloader.word_iter('train'):
@@ -190,8 +195,12 @@ def train(args):
     with open(os.path.join(args.vocab_dir, 'vocab.data'), 'rb') as fin:
         vocab = pickle.load(fin)
 
-    dataloader = DataLoader(args.max_p_num, args.max_p_len, args.max_q_len, args.max_ch_len,
-                            args.train_files, args.dev_files)
+    dataloader = DataLoader(args.max_p_num,
+                            args.max_p_len,
+                            args.max_q_len,
+                            args.max_ch_len,
+                            args.train_files,
+                            args.dev_files)
 
     logger.info('Converting text into ids...')
     dataloader.convert_to_ids(vocab)
@@ -219,7 +228,11 @@ def evaluate(args):
         vocab = pickle.load(fin)
 
     assert len(args.dev_files) > 0, 'No dev files are provided.'
-    dataloader = DataLoader(args.max_p_num, args.max_p_len, args.max_q_len, args.max_ch_len, dev_files=args.dev_files)
+    dataloader = DataLoader(args.max_p_num,
+                            args.max_p_len,
+                            args.max_q_len,
+                            args.max_ch_len,
+                            dev_files=args.dev_files)
 
     logger.info('Converting text into ids...')
     dataloader.convert_to_ids(vocab)
