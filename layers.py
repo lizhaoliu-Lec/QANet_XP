@@ -152,6 +152,7 @@ def residual_block(inputs, num_blocks, num_conv_layers, kernel_size, mask=None,
                                                      scope="self_attention_layers%d" % i, reuse=reuse,
                                                      is_training=is_training,
                                                      bias=bias, dropout=dropout, sublayers=(sublayer, total_sublayers))
+
         return outputs
 
 
@@ -542,5 +543,4 @@ def total_params(variables):
         for dim in shape:
             variable_parametes *= dim.value
         total_parameters += variable_parametes
-    print("Total number of trainable parameters: {}".format(total_parameters))
     return total_parameters
