@@ -489,7 +489,7 @@ class Model(object):
                 else:
                     self.logger.warning('No dev set is loaded for evaluation in the dataset!')
 
-            self.save(save_dir, save_prefix + '_' + str(epoch))
+            self.save(save_dir, save_prefix)
 
     def evaluate(self, eval_batches, result_dir=None, result_prefix=None, save_full_info=False):
         pred_answers = []
