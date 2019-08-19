@@ -35,6 +35,26 @@ or
 bash train.sh
 ```
 
+### Evaluate
+```bash
+python cli.py --evaluate [arguments]
+```
+
+or
+```bash
+bash evalutate.sh
+```
+
+### Predict
+```bash
+python cli.py --predict [arguments]
+```
+
+or
+```bash
+bash predict.sh
+```
+
 ## Reference
 - [DuReader](https://github.com/baidu/DuReader)
 - [QANet Baseline](https://github.com/NLPLearn/QANet)
