@@ -24,12 +24,12 @@ jieba
 包括生成词典，使用预训练词向量，模型支持[Chinese-Word-Vectors](https://github.com/Embedding/Chinese-Word-Vectors)中预训练词向量，下载该模型词向量后在`my_cli.py`中指定即可.
 
 ```bash
-python my_cli.py --prepro
+python cli.py --prepro
 ```
 
 ### 训练
 ```bash
-python my_cli.py --train [arguments]
+python cli.py --train [arguments]
 ```
 
 或者直接采用封装好的bash训练

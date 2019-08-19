@@ -12,9 +12,6 @@ from layers import regularizer, residual_block, highway, conv, mask_logits, tril
 from optimizer import AdamWOptimizer
 from tensorflow.python.ops import array_ops
 
-from utils.dureader_eval import compute_bleu_rouge
-from utils.dureader_eval import normalize
-
 
 class Model(object):
     def __init__(self, vocab, config, demo=False):
@@ -29,13 +26,6 @@ class Model(object):
         self.learning_rate = config.learning_rate
         self.weight_decay = config.weight_decay
         self.use_dropout = config.dropout < 1
-
-        # length limit
-        if not self.demo:
-            self.max_p_num = config.max_p_num
-            self.logger.info("numbers of passages %s" % self.max_p_num)
-        else:
-            self.max_p_num = 1
 
         self.max_p_len = config.max_p_len
         self.max_q_len = config.max_q_len
@@ -86,24 +76,23 @@ class Model(object):
             self.end_label = tf.placeholder(tf.int32, [None], "answer_label2")
         else:
             self.c = tf.placeholder(tf.int32,
-                                    [self.config.batch_size * self.max_p_num, self.config.max_p_len],
+                                    [self.config.batch_size, self.config.max_p_len],
                                     "context")
             self.q = tf.placeholder(tf.int32,
-                                    [self.config.batch_size * self.max_p_num, self.config.max_q_len],
+                                    [self.config.batch_size, self.config.max_q_len],
                                     "question")
             self.ch = tf.placeholder(tf.int32,
-                                     [self.config.batch_size * self.max_p_num,
+                                     [self.config.batch_size,
                                       self.config.max_p_len, self.config.max_ch_len],
                                      "context_char")
             self.qh = tf.placeholder(tf.int32,
-                                     [self.config.batch_size * self.max_p_num,
+                                     [self.config.batch_size,
                                       self.config.max_q_len, self.config.max_ch_len],
                                      "question_char")
-            self.start_label = tf.placeholder(tf.int32, [self.config.batch_size], "answer_label1")
-            self.end_label = tf.placeholder(tf.int32, [self.config.batch_size], "answer_label2")
+            self.label = tf.placeholder(tf.int32, [self.config.batch_size], "answer_label")
 
         self.position_emb = position_embedding(self.c, 2 * self.config.hidden_size)
-        self.c_mask = tf.cast(self.c, tf.bool)  # index 0 is padding symbol  N x self.max_p_num, max_p_len
+        self.c_mask = tf.cast(self.c, tf.bool)  # index 0 is padding symbol  N, max_p_len
         self.q_mask = tf.cast(self.q, tf.bool)
         self.c_len = tf.reduce_sum(tf.cast(self.c_mask, tf.int32), axis=1)
         self.q_len = tf.reduce_sum(tf.cast(self.q_mask, tf.int32), axis=1)
@@ -184,9 +173,9 @@ class Model(object):
             dc = self.char_mat.get_shape()[-1]
         with tf.variable_scope("Input_Embedding_Layer"):
             ch_emb = tf.reshape(tf.nn.embedding_lookup(
-                self.char_mat, self.ch), [N * PL * self.max_p_num, CL, dc])
+                self.char_mat, self.ch), [N * PL, CL, dc])
             qh_emb = tf.reshape(tf.nn.embedding_lookup(
-                self.char_mat, self.qh), [N * QL * self.max_p_num, CL, dc])
+                self.char_mat, self.qh), [N * QL, CL, dc])
             ch_emb = tf.nn.dropout(ch_emb, 1.0 - 0.5 * self.dropout)
             qh_emb = tf.nn.dropout(qh_emb, 1.0 - 0.5 * self.dropout)
 
@@ -204,8 +193,8 @@ class Model(object):
             ch_emb = tf.reduce_max(ch_emb, axis=1)
             qh_emb = tf.reduce_max(qh_emb, axis=1)
 
-            ch_emb = tf.reshape(ch_emb, [N * self.max_p_num, PL, -1])
-            qh_emb = tf.reshape(qh_emb, [N * self.max_p_num, QL, -1])
+            ch_emb = tf.reshape(ch_emb, [N, PL, -1])
+            qh_emb = tf.reshape(qh_emb, [N, QL, -1])
 
             c_emb = tf.nn.dropout(tf.nn.embedding_lookup(self.word_mat, self.c), 1.0 - self.dropout)
             q_emb = tf.nn.dropout(tf.nn.embedding_lookup(self.word_mat, self.q), 1.0 - self.dropout)
@@ -276,7 +265,6 @@ class Model(object):
         #  self.config.char_embed_size,
         #  self.config.head_size
         N, PL, QL, CL, d, dc, nh = self._params()
-        print('N: %d, PL: %d, QL: %d, CL: %d, d: %d, dc: %d, nh: %d' % (N, PL, QL, CL, d, dc, nh))
         if self.config.fix_pretrained_vector:
             dc = self.char_mat.get_shape()[-1]
         with tf.variable_scope("Model_Encoder_Layer"):
@@ -294,14 +282,13 @@ class Model(object):
                                                num_heads=nh,
                                                seq_len=self.c_len,
                                                scope="Model_Encoder",
-                                               bias=False,
+                                               bias=True,
                                                reuse=True if i > 0 else None,
                                                dropout=self.dropout))
 
             for i, item in enumerate(self.enc):
                 self.enc[i] = tf.reshape(self.enc[i],
                                          [N, -1, self.enc[i].get_shape()[-1]])
-                print('enc[%d]' % i, self.enc[i])
 
     def _decode(self):
 
@@ -313,35 +300,29 @@ class Model(object):
         #  self.config.char_embed_size,
         #  self.config.head_size
         N, PL, QL, CL, d, dc, nh = self._params()
-
         if self.config.use_position_attn:
-            start_logits = tf.squeeze(
-                conv(self._attention(tf.concat([self.enc[1], self.enc[2]], axis=-1), name="attn1"),
-                     1, bias=False,
-                     name="start_pointer"), -1)
-            end_logits = tf.squeeze(
-                conv(self._attention(tf.concat([self.enc[1], self.enc[3]], axis=-1), name="attn2"),
-                     1, bias=False,
-                     name="end_pointer"), -1)
+            logits = tf.squeeze(
+                conv(self._attention(self.enc[3], name="attn_logits"),
+                     1,
+                     bias=True,
+                     name="logits",
+                     activation=None), -1)
         else:
-            start_logits = tf.squeeze(
-                conv(tf.concat([self.enc[1], self.enc[2]], axis=-1), 1, bias=False, name="start_pointer"),
-                -1)
-            end_logits = tf.squeeze(
-                conv(tf.concat([self.enc[1], self.enc[3]], axis=-1), 1, bias=False, name="end_pointer"),
-                -1)
+            logits = tf.squeeze(
+                conv(self.enc[3],
+                     1,
+                     bias=True,
+                     name="logits",
+                     activation=None), -1)
 
-        self.logits = [mask_logits(start_logits, mask=tf.reshape(self.c_mask, [N, -1])),
-                       mask_logits(end_logits, mask=tf.reshape(self.c_mask, [N, -1]))]
+        self.logits = tf.layers.dense(logits,
+                                      self.max_a_len,
+                                      use_bias=True,
+                                      kernel_regularizer=tf.contrib.layers.l2_regularizer(self.config.weight_decay),
+                                      activation=None,
+                                      name='fully_connected')
 
-        self.logits1, self.logits2 = [l for l in self.logits]
-
-        outer = tf.matmul(tf.expand_dims(tf.nn.softmax(self.logits1), axis=2),
-                          tf.expand_dims(tf.nn.softmax(self.logits2), axis=1))
-
-        outer = tf.matrix_band_part(outer, 0, self.max_a_len)
-        self.yp1 = tf.argmax(tf.reduce_max(outer, axis=2), axis=1)
-        self.yp2 = tf.argmax(tf.reduce_max(outer, axis=1), axis=1)
+        self.yp = tf.argmax(self.logits, axis=-1)
 
     def _compute_loss(self):
         def focal_loss(logits, labels, weights=None, alpha=0.25, gamma=2):
@@ -353,19 +334,16 @@ class Model(object):
                         - (1 - alpha) * (neg_p_sub ** gamma) * tf.log(tf.clip_by_value(1.0 - logits, 1e-8, 1.0))
             return tf.reduce_sum(cross_ent, 1)
 
-        start_label = tf.one_hot(self.start_label, tf.shape(self.logits1)[1], axis=1)
-        end_label = tf.one_hot(self.end_label, tf.shape(self.logits2)[1], axis=1)
+        label = tf.one_hot(self.label, self.max_a_len, axis=1)
 
         if self.config.loss_type == 'cross_entropy':
-            start_loss = tf.nn.softmax_cross_entropy_with_logits(
-                logits=self.logits1, labels=start_label)
-            end_loss = tf.nn.softmax_cross_entropy_with_logits(
-                logits=self.logits2, labels=end_label)
-            self.loss = tf.reduce_mean(start_loss + end_loss)
+            total_loss = tf.nn.softmax_cross_entropy_with_logits(
+                logits=self.logits, labels=label)
+
         else:
-            start_loss = focal_loss(tf.nn.softmax(self.logits1, -1), start_label)
-            end_loss = focal_loss(tf.nn.softmax(self.logits2, -1), end_label)
-            self.loss = tf.reduce_mean(start_loss + end_loss)
+            total_loss = focal_loss(tf.nn.softmax(self.logits, -1), label)
+
+        self.loss = tf.reduce_mean(total_loss)
         self.logger.info("loss type %s" % self.config.loss_type)
 
         self.all_params = tf.trainable_variables()
@@ -452,13 +430,14 @@ class Model(object):
         total_num, total_loss = 0, 0
         log_every_n_batch, n_batch_loss = 1000, 0
         for bitx, batch in enumerate(train_batches, 1):
-            feed_dict = {self.c: batch['passage_token_ids'],
-                         self.q: batch['question_token_ids'],
-                         self.qh: batch['question_char_ids'],
-                         self.ch: batch["passage_char_ids"],
-                         self.start_label: batch['start_id'],
-                         self.end_label: batch['end_id'],
-                         self.dropout: dropout}
+            feed_dict = {
+                self.c: batch['context_token_ids'],
+                self.ch: batch["context_char_ids"],
+                self.q: batch['question_token_ids'],
+                self.qh: batch['question_char_ids'],
+                self.label: batch['label'],
+                self.dropout: dropout,
+            }
 
             try:
                 _, loss, global_step = self.sess.run([self.train_op, self.loss, self.global_step], feed_dict)
@@ -466,14 +445,13 @@ class Model(object):
                 total_num += len(batch['raw_data'])
                 n_batch_loss += loss
             except Exception as e:
-                # print("Error>>>", e)
+                print("Error while training  > ", e)
                 continue
 
             if log_every_n_batch > 0 and bitx % log_every_n_batch == 0:
                 self.logger.info('Average loss from batch {} to {} is {}'.format(
                     bitx - log_every_n_batch + 1, bitx, n_batch_loss / log_every_n_batch))
                 n_batch_loss = 0
-        print("total_num", total_num)
         return 1.0 * total_loss / total_num
 
     def _params(self):
@@ -495,7 +473,6 @@ class Model(object):
               evaluate=True):
         pad_id = self.vocab.get_word_id(self.vocab.pad_token)
         pad_char_id = self.vocab.get_char_id(self.vocab.pad_token)
-        max_rouge_l = 0
         for epoch in range(1, epochs + 1):
             self.logger.info('Training the model for epoch {}'.format(epoch))
             train_batches = data.next_batch('train', batch_size, pad_id, pad_char_id, shuffle=True)
@@ -506,64 +483,54 @@ class Model(object):
                 self.logger.info('Evaluating the model after epoch {}'.format(epoch))
                 if data.dev_set is not None:
                     eval_batches = data.next_batch('dev', batch_size, pad_id, pad_char_id, shuffle=False)
-                    eval_loss, bleu_rouge = self.evaluate(eval_batches)
-                    self.logger.info('Dev eval loss {}'.format(eval_loss))
-                    self.logger.info('Dev eval result: {}'.format(bleu_rouge))
+                    eval_loss, eval_acc = self.evaluate(eval_batches, self.config.result_dir, save_prefix)
+                    self.logger.info('Dev eval loss {}, Dev eval acc {}'.format(eval_loss, eval_acc))
 
-                    if bleu_rouge['Rouge-L'] > max_rouge_l:
-                        self.save(save_dir, save_prefix)
-                        max_rouge_l = bleu_rouge['Rouge-L']
                 else:
                     self.logger.warning('No dev set is loaded for evaluation in the dataset!')
-            else:
-                self.save(save_dir, save_prefix + '_' + str(epoch))
+
+            self.save(save_dir, save_prefix + '_' + str(epoch))
 
     def evaluate(self, eval_batches, result_dir=None, result_prefix=None, save_full_info=False):
-        pred_answers, ref_answers = [], []
-        total_loss, total_num = 0, 0
+        pred_answers = []
+        total_loss, total_num, num_right = 0, 0, 0
         for b_itx, batch in enumerate(eval_batches):
 
             feed_dict = {
-                self.c: batch['passage_token_ids'],
+                self.c: batch['context_token_ids'],
                 self.q: batch['question_token_ids'],
+                self.ch: batch["context_char_ids"],
                 self.qh: batch['question_char_ids'],
-                self.ch: batch["passage_char_ids"],
-                self.start_label: batch['start_id'],
-                self.end_label: batch['end_id'],
+                self.label: batch['label'],
                 self.dropout: 0.0
             }
 
             try:
-                start_probs, end_probs, loss = self.sess.run(
-                    [self.logits1, self.logits2, self.loss], feed_dict)
+                y_preps, loss = self.sess.run(
+                    [self.yp, self.loss], feed_dict)
                 total_loss += loss * len(batch['raw_data'])
                 total_num += len(batch['raw_data'])
 
-                padded_p_len = len(batch['passage_token_ids'][0])
-                for sample, start_prob, end_prob in zip(batch['raw_data'], start_probs, end_probs):
+                for sample, label_prob in zip(batch['raw_data'], y_preps):
 
-                    best_answer = self.find_best_answer(sample, start_prob, end_prob, padded_p_len)
+                    label_prob = int(label_prob)
+                    added = {
+                        'context': sample['context'],
+                        'question': sample['question'],
+                        'answer': sample['answer'],
+                        'pre_index': [label_prob],
+                        'pred_answers': sample['question'][label_prob] if label_prob < len(
+                            sample['question']) else '其他'
+                    }
+                    if label_prob == sample['answer'][0]:
+                        num_right += 1
                     if save_full_info:
-                        sample['pred_answers'] = [best_answer]
+                        sample.update(added)
                         pred_answers.append(sample)
                     else:
-                        pred_answers.append({
-                            'question_id': sample['question_id'],
-                            'question_type': sample['question_type'],
-                            'answers': [best_answer],
-                            'entity_answers': [[]],
-                            'yesno_answers': []
-                        })
-                    if 'answers' in sample:
-                        ref_answers.append({
-                            'question_id': sample['question_id'],
-                            'question_type': sample['question_type'],
-                            'answers': sample['answers'],
-                            'entity_answers': [[]],
-                            'yesno_answers': []
-                        })
-
-            except:
+                        pred_answers.append(added)
+            except Exception as e:
+                print("Error while evaluating  > ", e)
                 continue
 
         if result_dir is not None and result_prefix is not None:
@@ -576,64 +543,10 @@ class Model(object):
 
         # this average loss is invalid on test set, since we don't have true start_id and end_id
         ave_loss = 1.0 * total_loss / total_num
-        # compute the bleu and rouge scores if reference answers is provided
-        if len(ref_answers) > 0:
-            pred_dict, ref_dict = {}, {}
-            for pred, ref in zip(pred_answers, ref_answers):
-                question_id = ref['question_id']
-                if len(ref['answers']) > 0:
-                    pred_dict[question_id] = normalize(pred['answers'])
-                    ref_dict[question_id] = normalize(ref['answers'])
-            bleu_rouge = compute_bleu_rouge(pred_dict, ref_dict)
-        else:
-            bleu_rouge = None
-        return ave_loss, bleu_rouge
+        # compute accuracy
+        accuracy = 1.0 * num_right / total_num
 
-    def find_best_answer(self, sample, start_prob, end_prob, padded_p_len):
-        """
-        Finds the best answer for a sample given start_prob and end_prob for each position.
-        This will call find_best_answer_for_passage because there are multiple passages in a sample
-        """
-        best_p_idx, best_span, best_score = None, None, 0
-        for p_idx, passage in enumerate(sample['passages']):
-            if p_idx >= self.max_p_num:
-                continue
-            passage_len = min(self.max_p_len, len(passage['passage_tokens']))
-            answer_span, score = self.find_best_answer_for_passage(
-                start_prob[p_idx * padded_p_len: (p_idx + 1) * padded_p_len],
-                end_prob[p_idx * padded_p_len: (p_idx + 1) * padded_p_len],
-                passage_len)
-            if score > best_score:
-                best_score = score
-                best_p_idx = p_idx
-                best_span = answer_span
-        if best_p_idx is None or best_span is None:
-            best_answer = ''
-        else:
-            best_answer = ''.join(
-                sample['passages'][best_p_idx]['passage_tokens'][best_span[0]: best_span[1] + 1])
-        return best_answer
-
-    def find_best_answer_for_passage(self, start_probs, end_probs, passage_len=None):
-        """
-        Finds the best answer with the maximum start_prob * end_prob from a single passage
-        """
-        if passage_len is None:
-            passage_len = len(start_probs)
-        else:
-            passage_len = min(len(start_probs), passage_len)
-        best_start, best_end, max_prob = -1, -1, 0
-        for start_idx in range(passage_len):
-            for ans_len in range(self.max_a_len):
-                end_idx = start_idx + ans_len
-                if end_idx >= passage_len:
-                    continue
-                prob = start_probs[start_idx] * end_probs[end_idx]
-                if prob > max_prob:
-                    best_start = start_idx
-                    best_end = end_idx
-                    max_prob = prob
-        return (best_start, best_end), max_prob
+        return ave_loss, accuracy
 
     def save(self, model_dir, model_prefix):
         """

@@ -1,29 +1,16 @@
-# !/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-"""
-:author: lxm
-:description: 配置文件，包括语料地址，超参数配置
-:ctime: 2018.07.10 15:32
-:mtime: 2018.07.10 15:32
-"""
-
-import tensorflow as tf
 import os
-
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
-
 import pickle
 import logging
 import argparse
+
 from dataloader import DataLoader
 from vocab import Vocab
 from model import Model
 
 
 def parse_args():
-    parser = argparse.ArgumentParser('Reading Comprehension on BaiduRC dataset')
+    parser = argparse.ArgumentParser('Reading Comprehension on Baidu RC dataset')
+
     parser.add_argument('--prepro', action='store_true',
                         help='create the directories, prepare to process the vocabulary and embeddings')
     parser.add_argument('--train', action='store_true',
@@ -40,7 +27,7 @@ def parse_args():
                                 help='algorithm')
     train_settings.add_argument('--loss_type', type=str, default='cross_entropy',
                                 help='loss fn')
-    train_settings.add_argument('--fix_pretrained_vector', type=bool, default=True,
+    train_settings.add_argument('--fix_pretrained_vector', type=bool, default=False,
                                 help='fixed pretrained vector')
     train_settings.add_argument('--optim', default='adam',
                                 help='optimizer type')
@@ -72,13 +59,11 @@ def parse_args():
                                 help='size of hidden units')
     model_settings.add_argument('--head_size', type=int, default=1,
                                 help='size of head in multihead-attention')
-    model_settings.add_argument('--max_p_num', type=int, default=5,
-                                help='max passage num in one sample')
-    model_settings.add_argument('--max_p_len', type=int, default=400,
+    model_settings.add_argument('--max_p_len', type=int, default=200,
                                 help='max length of passage')
-    model_settings.add_argument('--max_q_len', type=int, default=60,
+    model_settings.add_argument('--max_q_len', type=int, default=100,
                                 help='max length of question')
-    model_settings.add_argument('--max_a_len', type=int, default=200,
+    model_settings.add_argument('--max_a_len', type=int, default=6,
                                 help='max length of answer')
     model_settings.add_argument('--max_ch_len', type=int, default=20,
                                 help='max length of character of a word')
@@ -95,8 +80,6 @@ def parse_args():
     path_settings.add_argument('--test_files', nargs='+',
                                default=['./data/corpus/test.json'],
                                help='list of files that contain the preprocessed test data')
-    path_settings.add_argument('--save_dir', default='./data/baidu',
-                               help='the dir with preprocessed baidu reading comprehension data')
     path_settings.add_argument('--vocab_dir', default='./data/vocab/',
                                help='the dir to save vocabulary')
     path_settings.add_argument('--model_dir', default='./data/models/',
@@ -120,12 +103,9 @@ def parse_args():
     return parser.parse_args()
 
 
-"""
-:description: prepare to process data including building vocab
-"""
-
-
 def prepro(args):
+    """prepare to process data including building vocab
+    """
     logger = logging.getLogger("QANet")
     logger.info("====== preprocessing ======")
     logger.info('Checking the data files...')
@@ -138,7 +118,7 @@ def prepro(args):
             os.makedirs(dir_path)
 
     logger.info('Building vocabulary...')
-    dataloader = DataLoader(args.max_p_num,
+    dataloader = DataLoader(args.max_a_len,
                             args.max_p_len,
                             args.max_q_len,
                             args.max_ch_len,
@@ -182,12 +162,9 @@ def prepro(args):
     logger.info('====== Done with preparing! ======')
 
 
-"""
-:description: train
-"""
-
-
 def train(args):
+    """train
+    """
     logger = logging.getLogger("QANet")
     logger.info("====== training ======")
 
@@ -195,7 +172,7 @@ def train(args):
     with open(os.path.join(args.vocab_dir, 'vocab.data'), 'rb') as fin:
         vocab = pickle.load(fin)
 
-    dataloader = DataLoader(args.max_p_num,
+    dataloader = DataLoader(args.max_a_len,
                             args.max_p_len,
                             args.max_q_len,
                             args.max_ch_len,
@@ -215,12 +192,9 @@ def train(args):
     logger.info('====== Done with model training! ======')
 
 
-"""
-:descriptoin: evaluate test data--prepro
-"""
-
-
 def evaluate(args):
+    """evaluate test data
+    """
     logger = logging.getLogger("QANet")
     logger.info("====== evaluating ======")
     logger.info('Load data_set and vocab...')
@@ -228,7 +202,7 @@ def evaluate(args):
         vocab = pickle.load(fin)
 
     assert len(args.dev_files) > 0, 'No dev files are provided.'
-    dataloader = DataLoader(args.max_p_num,
+    dataloader = DataLoader(args.max_a_len,
                             args.max_p_len,
                             args.max_q_len,
                             args.max_ch_len,
@@ -252,12 +226,9 @@ def evaluate(args):
     logger.info('Predicted answers are saved to {}'.format(os.path.join(args.result_dir)))
 
 
-"""
-:descriptoin: predict answers
-"""
-
-
 def predict(args):
+    """predict answers
+    """
     logger = logging.getLogger("QANet")
 
     logger.info('Load data_set and vocab...')
@@ -265,7 +236,7 @@ def predict(args):
         vocab = pickle.load(fin)
 
     assert len(args.test_files) > 0, 'No test files are provided.'
-    dataloader = DataLoader(args.max_p_num, args.max_p_len, args.max_q_len, args.max_ch_len,
+    dataloader = DataLoader(args.max_a_len, args.max_p_len, args.max_q_len, args.max_ch_len,
                             test_files=args.test_files)
 
     logger.info('Converting text into ids...')

@@ -1,1 +1,3 @@
-jieba
+tensorflow==1.12.0
+jieba==0.39
+numpy==1.16.4

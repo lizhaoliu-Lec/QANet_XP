@@ -1,29 +1,23 @@
 # -*- coding: utf-8 -*-
 # /usr/bin/python2
 
-import tensorflow as tf
-import numpy as np
-import math
-
-from tensorflow.contrib.rnn import MultiRNNCell
-from tensorflow.contrib.rnn import RNNCell
-
-from tensorflow.python.util import nest
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import clip_ops
-
-from functools import reduce
-from operator import mul
-
-'''
+"""
 Some functions are taken directly from Tensor2Tensor Library:
 https://github.com/tensorflow/tensor2tensor/
 and BiDAF repository:
 https://github.com/allenai/bi-att-flow
-'''
+"""
+
+import tensorflow as tf
+import math
+
+from tensorflow.python.util import nest
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import nn_ops
+
+from functools import reduce
+from operator import mul
 
 initializer = lambda: tf.contrib.layers.variance_scaling_initializer(factor=1.0,
                                                                      mode='FAN_AVG',
@@ -262,7 +256,6 @@ def conv(inputs, output_size, bias=None, activation=None, kernel_size=1, name="c
 
 
 def mask_logits(inputs, mask, mask_value=-1e30):
-    shapes = inputs.shape.as_list()
     mask = tf.cast(mask, tf.float32)
     return inputs * mask + mask_value * (1 - mask)
 

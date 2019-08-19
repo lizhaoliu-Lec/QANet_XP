@@ -20,10 +20,10 @@ class DataLoader(object):
     This module implements the APIs for loading and using baidu reading comprehension dataset
     """
 
-    def __init__(self, max_p_num, max_p_len, max_q_len, max_char_len,
+    def __init__(self, max_a_len, max_p_len, max_q_len, max_char_len,
                  train_files=[], dev_files=[], test_files=[]):
         self.logger = logging.getLogger("brc")
-        self.max_p_num = max_p_num
+        self.max_a_len = max_a_len
         self.max_p_len = max_p_len
         self.max_q_len = max_q_len
         self.max_char_len = max_char_len
@@ -55,22 +55,17 @@ class DataLoader(object):
         max_char_num = 0
         with open(data_path, encoding='UTF-8') as fin:
             data_set = []
-            for lidx, line in enumerate(fin):
+            for idx, line in enumerate(fin):
 
                 sample = json.loads(line.strip())
 
-                # if have no answer or answer to long
-                # we ignore it.
-                if train:
-                    if len(sample['answer_spans']) == 0:
-                        continue
-                    if sample['answer_spans'][0][1] >= self.max_p_len:
-                        continue
+                if len(sample['answer']) > self.max_a_len:
+                    print(sample)
+                    print('got answer idx `%d` bigger than max_a_len `%d`, ignore it.' % (
+                        sample['answer'][0], self.max_a_len))
+                    continue
 
-                if 'answer_docs' in sample:
-                    sample['answer_passages'] = sample['answer_docs']
-
-                question_tokens = word_tokenize(sample['segmented_question'])
+                question_tokens = word_tokenize(sample['question'])
                 sample['question_tokens'] = question_tokens
                 question_chars = [list(token) for token in question_tokens]
                 sample['question_chars'] = question_chars
@@ -79,46 +74,15 @@ class DataLoader(object):
                     if len(char) > max_char_num:
                         max_char_num = len(char)
 
-                sample['passages'] = []
-                for d_idx, doc in enumerate(sample['documents']):
-                    if train:
-                        most_related_para = doc['most_related_para']
+                context_tokens = word_tokenize(sample['context'])
+                sample['context_tokens'] = context_tokens
+                context_chars = [list(token) for token in context_tokens]
+                sample['context_chars'] = context_chars
 
-                        passage_tokens = word_tokenize(doc['segmented_paragraphs'][most_related_para])
-                        passage_chars = [list(token) for token in passage_tokens]
+                for char in context_chars:
+                    if len(char) > max_char_num:
+                        max_char_num = len(char)
 
-                        for char in passage_chars:
-                            if len(char) > max_char_num:
-                                max_char_num = len(char)
-
-                        sample['passages'].append({
-                            'passage_tokens': passage_tokens,
-                            'is_selected': doc['is_selected'],
-                            'passage_chars': passage_chars,
-                        })
-
-                    else:
-                        para_infos = []
-                        for para_tokens in doc['segmented_paragraphs']:
-                            para_tokens = word_tokenize(para_tokens)
-                            question_tokens = word_tokenize(sample['segmented_question'])
-
-                            common_with_question = Counter(para_tokens) & Counter(question_tokens)
-                            correct_preds = sum(common_with_question.values())
-                            if correct_preds == 0:
-                                recall_wrt_question = 0
-                            else:
-                                recall_wrt_question = float(correct_preds) / len(question_tokens)
-                            para_infos.append((para_tokens, recall_wrt_question, len(para_tokens)))
-                        para_infos.sort(key=lambda x: (-x[1], x[2]))
-                        fake_passage_tokens = []
-                        for para_info in para_infos[:1]:
-                            fake_passage_tokens += para_info[0]
-
-                        sample['passages'].append({
-                            'passage_tokens': fake_passage_tokens,
-                            'passage_chars': [list(token) for token in fake_passage_tokens],
-                        })
                 data_set.append(sample)
         return data_set
 
@@ -132,46 +96,28 @@ class DataLoader(object):
         Returns:
             one batch of data
         """
-        batch_data = {'raw_data': [data[i] for i in indices],
-                      'question_token_ids': [],
-                      'question_char_ids': [],
-                      'question_length': [],
-                      'passage_token_ids': [],
-                      'passage_length': [],
-                      'passage_char_ids': [],
-                      'start_id': [],
-                      'end_id': []}
-        max_passage_num = max([len(sample['passages']) for sample in batch_data['raw_data']])
-        max_passage_num = min(self.max_p_num, max_passage_num)
+        batch_data = {
+            'raw_data': [data[i] for i in indices],
+            'question_token_ids': [],
+            'question_char_ids': [],
+            'question_length': [],
+            'context_token_ids': [],
+            'context_length': [],
+            'context_char_ids': [],
+            'label': [],
+        }
+
         for sidx, sample in enumerate(batch_data['raw_data']):
-            for pidx in range(max_passage_num):
-                if pidx < len(sample['passages']):
-                    batch_data['question_token_ids'].append(sample['question_token_ids'])
-                    batch_data['question_char_ids'].append(sample['question_char_ids'])
-                    batch_data['question_length'].append(len(sample['question_token_ids']))
-                    passage_token_ids = sample['passages'][pidx]['passage_token_ids']
-                    passage_char_ids = sample['passages'][pidx]['passage_char_ids']
-                    batch_data['passage_token_ids'].append(passage_token_ids)
-                    batch_data['passage_length'].append(min(len(passage_token_ids), self.max_p_len))
-                    batch_data['passage_char_ids'].append(passage_char_ids)
-                else:
-                    batch_data['question_token_ids'].append([])
-                    batch_data['question_length'].append(0)
-                    batch_data['question_char_ids'].append([[]])
-                    batch_data['passage_token_ids'].append([])
-                    batch_data['passage_length'].append(0)
-                    batch_data['passage_char_ids'].append([[]])
+            batch_data['question_token_ids'].append(sample['question_token_ids'])
+            batch_data['question_char_ids'].append(sample['question_char_ids'])
+            batch_data['question_length'].append(len(sample['question_token_ids']))
+            batch_data['context_token_ids'].append(sample['context_token_ids'])
+            batch_data['context_length'].append(min(len(sample['context_token_ids']), self.max_p_len))
+            batch_data['context_char_ids'].append(sample['context_char_ids'])
 
         batch_data, padded_p_len, padded_q_len = self._dynamic_padding(batch_data, pad_id, pad_char_id)
         for sample in batch_data['raw_data']:
-            if 'answer_passages' in sample and len(sample['answer_passages']):
-                gold_passage_offset = padded_p_len * sample['answer_passages'][0]
-                batch_data['start_id'].append(gold_passage_offset + sample['answer_spans'][0][0])
-                batch_data['end_id'].append(gold_passage_offset + sample['answer_spans'][0][1])
-            else:
-                # fake span for some samples, only valid for testing
-                batch_data['start_id'].append(0)
-                batch_data['end_id'].append(0)
+            batch_data['label'].append(sample['answer'][0])
         return batch_data
 
     def _dynamic_padding(self, batch_data, pad_id, pad_char_id):
@@ -181,18 +127,18 @@ class DataLoader(object):
         pad_char_len = self.max_char_len
         pad_p_len = self.max_p_len  # min(self.max_p_len, max(batch_data['passage_length']))
         pad_q_len = self.max_q_len  # min(self.max_q_len, max(batch_data['question_length']))
-        batch_data['passage_token_ids'] = [(ids + [pad_id] * (pad_p_len - len(ids)))[: pad_p_len]
-                                           for ids in batch_data['passage_token_ids']]
-        for index, char_list in enumerate(batch_data['passage_char_ids']):
+        batch_data['context_token_ids'] = [(ids + [pad_id] * (pad_p_len - len(ids)))[: pad_p_len]
+                                           for ids in batch_data['context_token_ids']]
+        for index, char_list in enumerate(batch_data['context_char_ids']):
             # print(batch_data['passage_char_ids'])
             for char_index in range(len(char_list)):
                 if len(char_list[char_index]) >= pad_char_len:
                     char_list[char_index] = char_list[char_index][:self.max_char_len]
                 else:
                     char_list[char_index] += [pad_char_id] * (pad_char_len - len(char_list[char_index]))
-            batch_data['passage_char_ids'][index] = char_list
-        batch_data['passage_char_ids'] = [(ids + [[pad_char_id] * pad_char_len] * (pad_p_len - len(ids)))[:pad_p_len]
-                                          for ids in batch_data['passage_char_ids']]
+            batch_data['context_char_ids'][index] = char_list
+        batch_data['context_char_ids'] = [(ids + [[pad_char_id] * pad_char_len] * (pad_p_len - len(ids)))[:pad_p_len]
+                                          for ids in batch_data['context_char_ids']]
 
         # print(np.array(batch_data['passage_char_ids']).shape, "==========")
 
@@ -232,13 +178,12 @@ class DataLoader(object):
             for sample in data_set:
                 for token in sample['question_tokens']:
                     yield token
-                for passage in sample['passages']:
-                    for token in passage['passage_tokens']:
-                        yield token
+                for token in sample['context_tokens']:
+                    yield token
 
     def convert_to_ids(self, vocab):
         """
-        Convert the question and passage in the original dataset to ids
+        Convert the question and paragraph in the original dataset to ids
         Args:
             vocab: the vocabulary on this dataset
         """
@@ -248,9 +193,8 @@ class DataLoader(object):
             for sample in data_set:
                 sample['question_token_ids'] = vocab.convert_word_to_ids(sample['question_tokens'])
                 sample["question_char_ids"] = vocab.convert_char_to_ids(sample['question_tokens'])
-                for passage in sample['passages']:
-                    passage['passage_token_ids'] = vocab.convert_word_to_ids(passage['passage_tokens'])
-                    passage['passage_char_ids'] = vocab.convert_char_to_ids(passage['passage_tokens'])
+                sample['context_token_ids'] = vocab.convert_word_to_ids(sample['context_tokens'])
+                sample["context_char_ids"] = vocab.convert_char_to_ids(sample['context_tokens'])
 
     def next_batch(self, set_name, batch_size, pad_id, pad_char_id, shuffle=True):
         """
