@@ -105,3 +105,6 @@ venv.bak/
 
 # filter ide file
 .idea/
+
+# filter big file
+data/
